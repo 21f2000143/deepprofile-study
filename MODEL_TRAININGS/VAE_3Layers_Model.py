@@ -11,52 +11,61 @@ import math
 from sklearn.metrics import mean_squared_error
 import matplotlib.pyplot as plt
 import tensorflow as tf
-from keras.layers import Input, Dense, Lambda, Layer, Activation, Dropout
-from keras.layers.normalization import BatchNormalization
+import keras
+from keras.layers import Input, Dense, Lambda, Activation, Dropout, BatchNormalization
 from keras.models import Model
 from keras import backend as K
-from keras import metrics, optimizers
+from keras import optimizers, losses, ops, random
 from keras.callbacks import Callback
-import keras
 import csv
+from pathlib import Path
 import sys
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
-#Prevent tensorflow from using all the memory
-config = tf.ConfigProto()
-config.gpu_options.allow_growth=True
-sess = tf.Session(config=config)
+from config.config import (
+  ALL_CANCER_FILES
+)
+
+
+# Configure TensorFlow 2.x GPU memory growth (prevents grabbing all memory)
+try:
+    gpus = tf.config.list_physical_devices('GPU')
+    for gpu in gpus:
+        try:
+            tf.config.experimental.set_memory_growth(gpu, True)
+        except Exception:
+            # Some environments may not allow setting memory growth after initialization
+            pass
+except Exception:
+    pass
 
 
 # Method for reparameterization trick to make model differentiable
 def sampling(args):
-    
     # Function with args required for Keras Lambda function
     z_mean, z_log_var = args
-
-    # Draw epsilon of the same shape from a standard normal distribution
-    epsilon = K.random_normal(shape=K.shape(z_mean), mean=0., stddev=1.0)
-    
-    # The latent vector is non-deterministic and differentiable
-    # in respect to z_mean and z_log_var
-    z = z_mean + K.exp(z_log_var / 2) * epsilon
+    # Draw epsilon of the same shape from a standard normal distribution (Keras ops/random)
+    epsilon = random.normal(ops.shape(z_mean), mean=0.0, stddev=1.0)
+    # Reparameterization trick
+    z = z_mean + ops.exp(z_log_var / 2) * epsilon
     return z
 
 #Method for defining the VAE loss
 def vae_loss(x_input, x_decoded):
-    
-    reconstruction_loss = original_dim * metrics.mse(x_input, x_decoded)
-    kl_loss = - 0.5 * K.sum(1 + z_log_var - K.square(z_mean) - K.exp(z_log_var), axis=-1)
-    
-    return K.mean(reconstruction_loss + (K.get_value(beta) * kl_loss))
+    # Use the beta variable directly so updates during training take effect under TF2/Keras 3
+    reconstruction_loss = original_dim * losses.mean_squared_error(x_input, x_decoded)
+    kl = -0.5 * ops.sum(1 + z_log_var - ops.square(z_mean) - ops.exp(z_log_var), axis=-1)
+    return ops.mean(reconstruction_loss + beta * kl)
 
 #Method for calculating the reconstruction loss
 def reconstruction_loss(x_input, x_decoded):
-    
-    return metrics.mse(x_input, x_decoded)
+    return losses.mean_squared_error(x_input, x_decoded)
 
 #Method for calculating the KL-divergence loss
 def kl_loss(x_input, x_decoded):
-    return - 0.5 * K.sum(1 + z_log_var - K.square(z_mean) - K.exp(z_log_var), axis=-1)
+    return -0.5 * ops.sum(1 + z_log_var - ops.square(z_mean) - ops.exp(z_log_var), axis=-1)
 
 class WarmUpCallback(Callback):
     def __init__(self, beta, kappa):
@@ -65,14 +74,22 @@ class WarmUpCallback(Callback):
     
     # Behavior on each epoch
     def on_epoch_end(self, epoch, logs={}):
-        if K.get_value(self.beta) <= 1:
-            K.set_value(self.beta, K.get_value(self.beta) + self.kappa)
+        # Increment beta by kappa until it reaches 1.0
+        try:
+            if float(tf.convert_to_tensor(self.beta).numpy()) <= 1.0:
+                self.beta.assign_add(tf.cast(self.kappa, tf.float32))
+                # Cap at 1.0
+                if float(self.beta.numpy()) > 1.0:
+                    self.beta.assign(1.0)
+        except Exception:
+            # Fallback in case .numpy() is unavailable; still attempt assign
+            self.beta.assign_add(tf.cast(self.kappa, tf.float32))
 
 #Read input file
 cancer_type = sys.argv[1]
 
-input_folder = '../ALL_CANCER_FILES/' + cancer_type + '/'
-output_folder = '../ALL_CANCER_FILES/' + cancer_type + '/VAE_FILES/'
+input_folder = ALL_CANCER_FILES + '/' + cancer_type + '/'
+output_folder = ALL_CANCER_FILES + '/' + cancer_type + '/'
 
 input_filename = input_folder + cancer_type + '_DATA_TOP2_JOINED_PCA_1000L.tsv'
 output_filename = cancer_type + '_DATA_TOP2_JOINED_encoded_'
@@ -89,17 +106,15 @@ latent_dim = int(sys.argv[4])
 fold = int(sys.argv[5])
 
 #SET RANDOM SEEDS
-from numpy.random import seed
-seed(123456 * fold)
-from tensorflow import set_random_seed
-set_random_seed(123456 * fold)
+np.random.seed(123456 * fold)
+tf.random.set_seed(123456 * fold)
 
 
 init_mode = 'glorot_uniform'
 batch_size = 50
 epochs = 50
 learning_rate = 0.0005
-beta = K.variable(1)
+beta = tf.Variable(1.0, dtype=tf.float32, trainable=False)
 kappa = 0
 
 input_df_training = input_df
@@ -133,7 +148,7 @@ x_decoded_mean = decoder_mean(h_decoded2)
 #VAE model
 vae = Model(x, x_decoded_mean)
 
-adam = optimizers.Adam(lr=learning_rate)
+adam = optimizers.Adam(learning_rate=learning_rate)
 vae.compile(optimizer=adam, loss = vae_loss, metrics = [reconstruction_loss, kl_loss])
 vae.summary()
 
@@ -172,7 +187,7 @@ training_encoded_df.to_csv(output_folder + output_filename + str(latent_dim) + "
 
 
 #SAVE ENCODER MODEL
-from keras.models import model_from_json
+# model_from_json not required in this file; models are saved via to_json + save_weights
 
 model_json = encoder.to_json()
 with open(output_folder + "VAE_" + cancer_type + "_encoder_" + str(latent_dim) + "L_"+ str(fold) + ".json", "w") as json_file:

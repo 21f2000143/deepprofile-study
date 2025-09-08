@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import csv
 import sys
+import config.config
 
 #Read user input
 cancer_type = sys.argv[1]

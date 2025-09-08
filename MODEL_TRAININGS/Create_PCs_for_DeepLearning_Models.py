@@ -1,7 +1,17 @@
 ###############################
 #This script is for PCA transforming the input data to pass to deep learning models
 ###############################
+from pathlib import Path
+import sys
 
+# Ensure project root (one level above src/) is on sys.path so absolute imports work
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from config.config import (
+  ALL_CANCER_FILES
+)
 import numpy as np
 import pandas as pd
 import csv
@@ -13,8 +23,8 @@ cancer_type = sys.argv[1]
 #Read number of components
 component_count = int(sys.argv[2])
 
-input_folder = '../ALL_CANCER_FILES/' + cancer_type + '/'
-output_folder = '../ALL_CANCER_FILES/' + cancer_type + '/'
+input_folder = ALL_CANCER_FILES + '/' + cancer_type + '/'
+output_folder = ALL_CANCER_FILES + '/' + cancer_type + '/'
 
 #Method for creating PCs
 def createPCs(cancer_type):
