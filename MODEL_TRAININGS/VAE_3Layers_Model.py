@@ -1,6 +1,5 @@
 ###############################
 #VAE model
-
 #Code is modified from https://github.com/keras-team/keras/blob/master/examples/variational_autoencoder.py
 ###############################
 
@@ -12,7 +11,7 @@ from sklearn.metrics import mean_squared_error
 import matplotlib.pyplot as plt
 import tensorflow as tf
 import keras
-from keras.layers import Input, Dense, Lambda, Activation, Dropout, BatchNormalization
+from keras.layers import Input, Dense, Lambda, Activation, Dropout, BatchNormalization, Layer
 from keras.models import Model
 from keras import backend as K
 from keras import optimizers, losses, ops, random
@@ -42,48 +41,49 @@ except Exception:
     pass
 
 
-# Method for reparameterization trick to make model differentiable
-def sampling(args):
-    # Function with args required for Keras Lambda function
-    z_mean, z_log_var = args
-    # Draw epsilon of the same shape from a standard normal distribution (Keras ops/random)
-    epsilon = random.normal(ops.shape(z_mean), mean=0.0, stddev=1.0)
-    # Reparameterization trick
-    z = z_mean + ops.exp(z_log_var / 2) * epsilon
-    return z
+class Sampling(Layer):
+    """Reparameterization trick layer that also adds the KL divergence via add_loss."""
+    def compute_output_shape(self, input_shape):
+        # input_shape is (shape_z_mean, shape_z_log_var)
+        return input_shape[0]
+    def call(self, inputs):
+        z_mean, z_log_var = inputs
+        epsilon = random.normal(ops.shape(z_mean), mean=0.0, stddev=1.0)
+        z = ops.add(z_mean, ops.multiply(ops.exp(ops.divide(z_log_var, 2.0)), epsilon))
+        # KL divergence: -0.5 * sum(1 + log_var - mu^2 - exp(log_var))
+        inner = ops.add(1.0, z_log_var)
+        inner = ops.subtract(inner, ops.square(z_mean))
+        inner = ops.subtract(inner, ops.exp(z_log_var))
+        kl = ops.multiply(-0.5, ops.sum(inner, axis=-1))
+        # Scale with beta (warmup) and add as model loss
+        scaled_kl = ops.multiply(ops.convert_to_tensor(beta, dtype="float32"), kl)
+        self.add_loss(ops.mean(scaled_kl))
+    # Note: For metrics, prefer Model.compile(metrics=[...]) or manual trackers in the layer.
+        return z
 
-#Method for defining the VAE loss
-def vae_loss(x_input, x_decoded):
-    # Use the beta variable directly so updates during training take effect under TF2/Keras 3
-    reconstruction_loss = original_dim * losses.mean_squared_error(x_input, x_decoded)
-    kl = -0.5 * ops.sum(1 + z_log_var - ops.square(z_mean) - ops.exp(z_log_var), axis=-1)
-    return ops.mean(reconstruction_loss + beta * kl)
-
-#Method for calculating the reconstruction loss
 def reconstruction_loss(x_input, x_decoded):
-    return losses.mean_squared_error(x_input, x_decoded)
-
-#Method for calculating the KL-divergence loss
-def kl_loss(x_input, x_decoded):
-    return -0.5 * ops.sum(1 + z_log_var - ops.square(z_mean) - ops.exp(z_log_var), axis=-1)
+    # Reconstruction loss used for compile (KL is added via Sampling layer)
+    return ops.multiply(original_dim, losses.mean_squared_error(x_input, x_decoded))
 
 class WarmUpCallback(Callback):
     def __init__(self, beta, kappa):
+        # Keep a reference to the shared beta variable
         self.beta = beta
         self.kappa = kappa
     
     # Behavior on each epoch
     def on_epoch_end(self, epoch, logs={}):
         # Increment beta by kappa until it reaches 1.0
+        # Increment beta by kappa until it reaches 1.0 (pure Python ops)
         try:
-            if float(tf.convert_to_tensor(self.beta).numpy()) <= 1.0:
-                self.beta.assign_add(tf.cast(self.kappa, tf.float32))
-                # Cap at 1.0
-                if float(self.beta.numpy()) > 1.0:
-                    self.beta.assign(1.0)
+            current = float(self.beta.numpy())
         except Exception:
-            # Fallback in case .numpy() is unavailable; still attempt assign
-            self.beta.assign_add(tf.cast(self.kappa, tf.float32))
+            # If numpy not available, fallback to 1.0
+            current = 1.0
+        new_val = current + float(self.kappa)
+        if new_val > 1.0:
+            new_val = 1.0
+        self.beta.assign(new_val)
 
 #Read input file
 cancer_type = sys.argv[1]
@@ -114,7 +114,7 @@ init_mode = 'glorot_uniform'
 batch_size = 50
 epochs = 50
 learning_rate = 0.0005
-beta = tf.Variable(1.0, dtype=tf.float32, trainable=False)
+beta = keras.Variable(1.0, dtype="float32", trainable=False)
 kappa = 0
 
 input_df_training = input_df
@@ -134,7 +134,7 @@ z_mean = Dense(latent_dim, kernel_initializer=init_mode)(net6)
 z_log_var = Dense(latent_dim, kernel_initializer=init_mode)(net6)
 
 # Sample from mean and var
-z = Lambda(sampling, output_shape=(latent_dim,))([z_mean, z_log_var])
+z = Sampling()([z_mean, z_log_var])
 
 #Define decoder
 decoder_h = Dense(intermediate2_dim, activation='relu', kernel_initializer=init_mode)
@@ -149,7 +149,7 @@ x_decoded_mean = decoder_mean(h_decoded2)
 vae = Model(x, x_decoded_mean)
 
 adam = optimizers.Adam(learning_rate=learning_rate)
-vae.compile(optimizer=adam, loss = vae_loss, metrics = [reconstruction_loss, kl_loss])
+vae.compile(optimizer=adam, loss="mse", metrics=["mse"])
 vae.summary()
 
 #Train model
@@ -193,7 +193,7 @@ model_json = encoder.to_json()
 with open(output_folder + "VAE_" + cancer_type + "_encoder_" + str(latent_dim) + "L_"+ str(fold) + ".json", "w") as json_file:
     json_file.write(model_json)
 
-encoder.save_weights(output_folder + "VAE_" + cancer_type + "_encoder_" + str(latent_dim) + "L_"+ str(fold) + ".h5")
+encoder.save_weights(output_folder + "VAE_" + cancer_type + "_encoder_" + str(latent_dim) + "L_"+ str(fold) + ".weights.h5")
 print("Saved model to disk")
 
 
@@ -201,7 +201,7 @@ model_json = decoder.to_json()
 with open(output_folder + "VAE_" + cancer_type + "_decoder_" + str(latent_dim) + "L_"+ str(fold) + ".json", "w") as json_file:
     json_file.write(model_json)
 
-decoder.save_weights(output_folder + "VAE_" + cancer_type + "_decoder_" + str(latent_dim) + "L_"+ str(fold) + ".h5")
+decoder.save_weights(output_folder + "VAE_" + cancer_type + "_decoder_" + str(latent_dim) + "L_"+ str(fold) + ".weights.h5")
 print("Saved model to disk")
 
 

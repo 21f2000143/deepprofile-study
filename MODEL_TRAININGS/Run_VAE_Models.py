@@ -1,7 +1,9 @@
 ###############################
 #Script for training VAE models
 ###############################
+# NOTE: This isn't required as of now
 import sys
+import subprocess
 
 cancer_type = sys.argv[1]
 latent = int(sys.argv[2])
@@ -28,4 +30,8 @@ if latent == 100:
     dim2 = 100
 
 for run in range(start, end):
-    get_ipython().magic(u"run -i 'VAE_3Layers_Model.py' '" +  cancer_type + "' " + str(dim1) + " " + str(dim2) + " " + str(latent) + " " + str(run))
+    cmd = [
+        "python", "VAE_3Layers_Model.py",
+        cancer_type, str(dim1), str(dim2), str(latent), str(run)
+    ]
+    subprocess.run(cmd)
