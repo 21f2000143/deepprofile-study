@@ -6,17 +6,25 @@ import numpy as np
 import pandas as pd
 import csv
 import sys
-import config.config
+from pathlib import Path
+# This is for absolute imports from the root repository
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from config.config import (
+  ALL_CANCER_FILES
+)
 
 #Read user input
 cancer_type = sys.argv[1]
 
-input_folder = '../ALL_CANCER_FILES/' + cancer_type + '/'
-output_folder = '../ALL_CANCER_FILES/' + cancer_type + '/' 
+input_folder = ALL_CANCER_FILES + '/' + cancer_type + '/'
+output_folder = ALL_CANCER_FILES + '/' + cancer_type + '/' 
 
 #Read all VAE model gene attributions
 L = 150
-data_df = pd.read_table(input_folder + 'VAE_WEIGHTS/' + cancer_type + '_DATA_VAE_Cluster_Weights_TRAINING_' + str(100) + 'L_fold' + str(1) + '.tsv', index_col = 0)
+data_df = pd.read_table(input_folder  + cancer_type + '_DATA_VAE_Cluster_Weights_TRAINING_' + str(100) + 'L_fold' + str(1) + '.tsv', index_col = 0)
 print(data_df.shape)
 basic_length = data_df.shape[0]
 
@@ -26,7 +34,7 @@ run_count = 100
 for dim in dims:
     VAE_weights = np.zeros((run_count * dim, basic_length))
     for i in range(run_count):
-        data_df = pd.read_table(input_folder + 'VAE_WEIGHTS/' + cancer_type + '_DATA_VAE_Cluster_Weights_TRAINING_' + str(dim) + 'L_fold' + str(i) + '.tsv', index_col = 0)
+        data_df = pd.read_table(input_folder  + cancer_type + '_DATA_VAE_Cluster_Weights_TRAINING_' + str(dim) + 'L_fold' + str(i) + '.tsv', index_col = 0)
         data_df = data_df.T
         #print(data_df.shape)
         start = dim * i

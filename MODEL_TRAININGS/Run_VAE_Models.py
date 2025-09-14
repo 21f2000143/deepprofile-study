@@ -9,7 +9,9 @@ cancer_type = sys.argv[1]
 latent = int(sys.argv[2])
 start = int(sys.argv[3])
 end = int(sys.argv[4])
+pca_components = int(sys.argv[5])
 
+# Manual selection, but has validation why these dimensions as intermedaite layer is important
 if latent == 5:  
     dim1 = 100
     dim2 = 25
@@ -32,6 +34,6 @@ if latent == 100:
 for run in range(start, end):
     cmd = [
         "python", "VAE_3Layers_Model.py",
-        cancer_type, str(dim1), str(dim2), str(latent), str(run)
+        cancer_type, str(dim1), str(dim2), str(latent), str(run), str(pca_components)
     ]
     subprocess.run(cmd)

@@ -6,12 +6,20 @@ import pandas as pd
 import numpy as np
 import csv
 import sys
+from pathlib import Path
+# This is for absolute imports from the root repository
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
+from config.config import (
+  ALL_CANCER_FILES
+)
 #Read user input
 cancer_type = sys.argv[1]
 
-input_folder = '../ALL_CANCER_FILES/' + cancer_type + '/'
-output_folder = '../ALL_CANCER_FILES/' + cancer_type + '/' 
+input_folder = ALL_CANCER_FILES + '/' + cancer_type + '/'
+output_folder = ALL_CANCER_FILES + '/' + cancer_type + '/' 
 
 #Read all training embeddings
 dims  = [5, 10, 25, 50, 75, 100]
@@ -19,7 +27,7 @@ data_list = []
 for dim in dims:
     run = 100
     for i in range(run):
-        data_df = pd.read_table(input_folder + 'VAE_FILES/' + cancer_type + '_DATA_TOP2_JOINED_encoded_' + str(dim) + 'L_TRAINING_fold' + str(i) + '.tsv', index_col = 0)      
+        data_df = pd.read_table(input_folder + cancer_type + '_DATA_TOP2_JOINED_encoded_' + str(dim) + 'L_TRAINING_fold' + str(i) + '.tsv', index_col = 0)      
         print(data_df.shape)
         data_list.append(data_df.values)
 

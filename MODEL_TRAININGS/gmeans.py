@@ -2,36 +2,32 @@
 #Code is  from https://github.com/flylo/g-means
 ###############################
 
+# Common imports
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 import seaborn as sbn
-
-from sklearn.cluster import MiniBatchKMeans
-from sklearn.preprocessing import scale
-
-from sklearn import datasets
-
 from scipy.stats import anderson
 
+# sklearn tools
+from sklearn.cluster import MiniBatchKMeans
+from sklearn.preprocessing import scale
+from sklearn import datasets
+
+# Utility for debugging
 from pdb import set_trace
 
 
 class GMeans(object):
-	
 	"""strictness = how strict should the anderson-darling test for normality be
 			0: not at all strict
 			4: very strict
 	"""
 
 	def __init__(self, min_obs=1, max_depth=10, random_state=None, strictness=4):
-
 		super(GMeans, self).__init__()
-
 		self.max_depth = max_depth
-		
 		self.min_obs = min_obs
-
 		self.random_state = random_state
 
 		if strictness not in range(5):
@@ -73,8 +69,6 @@ class GMeans(object):
 		x_prime = scale(data.dot(v) / (v.dot(v)))
 		gaussian = self._gaussianCheck(x_prime)
 		
-		# print gaussian
-
 		if gaussian == True:
 			self.data_index[index[:, 0]] = index
 			self.stopping_criteria.append('gaussian')
@@ -88,14 +82,11 @@ class GMeans(object):
 				self.data_index[index[:, 0]] = index
 				self.stopping_criteria.append('min_obs')
 				return
-			
 
 			current_index = index[km.labels_==k]
 			current_index[:, 1] = np.random.randint(0,100000000000)
 			self._recursiveClustering(data=current_data, depth=depth, index=current_index)
 
-		# set_trace()
-	
 
 	def fit(self, data):
 		"""
@@ -132,10 +123,10 @@ if __name__ == '__main__':
 	km = MiniBatchKMeans(n_clusters=4)
 	km.fit(iris)
 	plot_data['labels_km'] = km.labels_
-	
+	print("Gmeans under execution")	
 	sbn.lmplot(x='x', y='y', data=plot_data, hue='labels_gmeans', fit_reg=False)
 	sbn.lmplot(x='x', y='y', data=plot_data, hue='labels_km', fit_reg=False)
 	plt.show()
-	set_trace()
+	# set_trace()
 
 

@@ -1,5 +1,5 @@
 ###############################
-#This script is for PCA transforming the input data to pass to deep learning models
+#This script is for PCA transforming which will pass to VAE models
 ###############################
 from pathlib import Path
 import sys
@@ -29,7 +29,7 @@ output_folder = ALL_CANCER_FILES + '/' + cancer_type + '/'
 #Method for creating PCs
 def createPCs(cancer_type):
     
-    print("************************* " + cancer_type)
+    print(" Creating PCs: ************************* :" + cancer_type)
     
     #Read training data
     data_df = pd.read_table(input_folder  + cancer_type + '_DATA_TOP2_JOINED_BATCH_CORRECTED_CLEANED.tsv', sep = '\t', index_col=0)

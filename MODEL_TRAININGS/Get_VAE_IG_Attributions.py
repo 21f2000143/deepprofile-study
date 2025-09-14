@@ -7,107 +7,103 @@ import numpy as np
 import pandas as pd
 import math 
 from sklearn.metrics import mean_squared_error
+import matplotlib.pyplot as plt
 import tensorflow as tf
-from keras.layers import Input, Dense, Lambda, Layer, Activation
-from keras.layers.normalization import BatchNormalization
-from keras.models import Model
-from keras import backend as K
-from keras import metrics, optimizers
-from keras.callbacks import Callback
 import keras
-import csv
 from keras.models import model_from_json
 import sys
 
-#Prevent tensorflow from using all the memory
-config = tf.ConfigProto()
-config.gpu_options.allow_growth=True
-sess = tf.Session(config=config)
+import csv
+from pathlib import Path
+
+# This is for absolute imports from the root repository
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from config.config import (
+  ALL_CANCER_FILES
+)
+# Configure GPU memory growth (TF2 replacement for ConfigProto Session config)
+try:
+    gpus = tf.config.list_physical_devices('GPU')
+    for gpu in gpus:
+        try:
+            tf.config.experimental.set_memory_growth(gpu, True)
+        except Exception:
+            pass
+except Exception:
+    pass
 
 #Read all user inputs
 cancer = sys.argv[1]
 dimension = int(sys.argv[2])
 start = int(sys.argv[3])
 end = int(sys.argv[4])
+pca_components_file = int(sys.argv[5])
 
 print("CANCER " + str(cancer))
 print("DIM " + str(dimension))
 print("START " + str(start)) 
 print("END " + str(end)) 
 
-input_folder = '../ALL_CANCER_FILES/' + cancer + '/' 
-output_folder = '../ALL_CANCER_FILES/' + cancer + '/VAE_WEIGHTS/' 
+input_folder = ALL_CANCER_FILES + '/' + cancer + '/'
+output_folder = ALL_CANCER_FILES + '/' + cancer + '/'
 
 #Load PCA weights
-pca_df = pd.read_table(input_folder + cancer + '_DATA_TOP2_JOINED_PCA_1000L_COMPONENTS.tsv', index_col = 0)
+pca_df = pd.read_table(input_folder + cancer + '_DATA_TOP2_JOINED_PCA_' + str(pca_components_file) + 'L_COMPONENTS.tsv', index_col = 0)
 print("PCA COMPONENTS ",  pca_df.shape)
 pca_components = pca_df.values
 
  #Read input data
-input_df = pd.read_table(input_folder + cancer + '_DATA_TOP2_JOINED_PCA_1000L.tsv', index_col=0)
+input_df = pd.read_table(input_folder + cancer + '_DATA_TOP2_JOINED_PCA_' + str(pca_components_file) + 'L.tsv', index_col=0)
 print("INPUT FILE ", input_df.shape)
 
-#VAE loss definition
-def vae_loss(x_input, x_decoded):
-    reconstruction_loss = original_dim * metrics.mse(x_input, x_decoded)
-    kl_loss = - 0.5 * K.sum(1 + z_log_var - K.square(z_mean) - K.exp(z_log_var), axis=-1)
-    return K.mean(reconstruction_loss + (K.get_value(beta) * kl_loss))
+###############################
+# NOTE:
+# This script operates ONLY on the encoder to obtain integrated gradients
+# for latent dimensions w.r.t. input PCA features. We do NOT need a custom
+# VAE loss here nor to re-define layers; we simply load the serialized
+# encoder model + weights and use it directly under eager execution.
+###############################
 
 #Save the weight for each run
 for vae_run in range(start, end):
     
     print("MODEL " + str(vae_run))
     
-    #Load model
-    json_file = open(input_folder + 'VAE_FILES/VAE_' + cancer + '_encoder_' + str(dimension) + 'L_' + str(vae_run) + '.json', 'r')
-    loaded_model_json = json_file.read()
-    json_file.close()
+    # Load model architecture
+    json_path = input_folder + 'VAE_' + cancer + '_encoder_' + str(dimension) + 'L_' + str(vae_run) + '.json'
+    with open(json_path, 'r') as json_file:
+        loaded_model_json = json_file.read()
     encoder = model_from_json(loaded_model_json)
-    
-    #Load weights
-    encoder.load_weights(input_folder + 'VAE_FILES/VAE_' + cancer + '_encoder_' + str(dimension) + 'L_' + str(vae_run) + '.h5')
-    print("Loaded model from disk")
 
-    #Define hyperparameters
+    # Load weights (try new .weights.h5 suffix first, fallback to legacy .h5)
+    weights_base = input_folder + 'VAE_' + cancer + '_encoder_' + str(dimension) + 'L_' + str(vae_run)
+    tried_paths = [weights_base + '.weights.h5', weights_base + '.h5']
+    loaded = False
+    for w_path in tried_paths:
+        if os.path.exists(w_path):
+            encoder.load_weights(w_path)
+            print(f"Loaded weights: {w_path}")
+            loaded = True
+            break
+    if not loaded:
+        raise FileNotFoundError(f"Could not find weights for encoder. Tried: {tried_paths}")
+
+    # No compile needed for inference + gradients in eager mode
     input_df_training = input_df
-    original_dim = input_df_training.shape[1]
-    intermediate1_dim = 100
-    intermediate2_dim = 25
     latent_dim = dimension
+    batch_size = 128
 
-    batch_size = 50
-    epochs = 50
-    learning_rate = 0.0005
-    beta = K.variable(1)
-    kappa = 0
-
-    #Encoder network
-    x = Input(shape=(original_dim, ))
-
-    net = Dense(intermediate1_dim)(x)
-    net2 = BatchNormalization()(net)
-    net3 = Activation('relu')(net2)
-
-    net4 = Dense(intermediate2_dim)(net3)
-    net5 = BatchNormalization()(net4)
-    net6 = Activation('relu')(net5)
-
-    z_mean = Dense(latent_dim)(net6)
-    z_log_var = Dense(latent_dim)(net6)
-
-    adam = optimizers.Adam(lr=learning_rate)
-    encoder.compile(optimizer=adam, loss = vae_loss)
-    encoder.summary()
-
-    #Encode training data using the model
-    training_encoded = encoder.predict(input_df_training, batch_size = batch_size)
-    print("ENCODED TRAINING DATA ", training_encoded.shape)
+    # Quick shape sanity
+    print("Encoder input shape expected:", encoder.input_shape, "  Provided data:", input_df_training.shape)
 
 
     #Measure weights and save absolute value of importance, averaged over samples
     from IntegratedGradients import *
 
-    ig = integrated_gradients(encoder)
+    ig = IntegratedGradients(encoder)
 
     overall_weights = np.zeros((pca_components.shape[0], dimension))
 
@@ -118,8 +114,8 @@ for vae_run in range(start, end):
         
         #Go over each sample
         for i in range(input_df_training.shape[0]):
-            #print("Sample " + str(i + 1))
-            vals = ig.explain(input_df_training.values[i, :], latent)    
+            vals = ig.explain(input_df_training.values[i, :], latent)
+            # Map back to gene space via PCA loadings
             new_vals = np.matmul(vals, pca_components.T)
             weights[:, i] = new_vals
             

@@ -7,7 +7,15 @@ import numpy as np
 import csv
 import sys
 from sklearn.cluster import KMeans
+from pathlib import Path
+# This is for absolute imports from the root repository
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
+from config.config import (
+  ALL_CANCER_FILES
+)
 #Read user inputs
 cancer_type = sys.argv[1]
 final_dim = int(sys.argv[2])
@@ -21,7 +29,7 @@ for dim in dims:
     run = 100
     for i in range(run):
         print(i)
-        data_df = pd.read_table('../ALL_CANCER_FILES/' + cancer_type + '/VAE_FILES/' + cancer_type + '_DATA_TOP2_JOINED_encoded_' + str(dim) + 'L_TRAINING_fold' + str(i) + '.tsv', index_col = 0)      
+        data_df = pd.read_table(ALL_CANCER_FILES + '/' + cancer_type + '/' + cancer_type + '_DATA_TOP2_JOINED_encoded_' + str(dim) + 'L_TRAINING_fold' + str(i) + '.tsv', index_col = 0)      
         print(data_df.shape)
         data_list.append(data_df.values)
 
@@ -35,4 +43,4 @@ kmeans = KMeans(n_clusters= final_dim, random_state=123).fit(X.transpose())
 print("K-means labels ", kmeans.labels_)
 
 #Save labels
-np.savetxt('../ALL_CANCER_FILES/' + cancer_type + '/' + cancer_type + '_TRAINING_DATA_kmeans_ENSEMBLE_LABELS_' + str(final_dim) + 'L.txt' , kmeans.labels_, delimiter=',')
+np.savetxt(ALL_CANCER_FILES + '/' + cancer_type + '/' + cancer_type + '_TRAINING_DATA_kmeans_ENSEMBLE_LABELS_' + str(final_dim) + 'L.txt' , kmeans.labels_, delimiter=',')

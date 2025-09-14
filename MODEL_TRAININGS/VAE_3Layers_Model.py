@@ -1,8 +1,10 @@
 ###############################
-#VAE model
-#Code is modified from https://github.com/keras-team/keras/blob/master/examples/variational_autoencoder.py
+# VAE model
+# Code is modified from https://github.com/keras-team/keras/blob/master/examples/variational_autoencoder.py
+# Sachin Kumar
 ###############################
 
+# Imports
 import os
 import numpy as np
 import pandas as pd
@@ -16,9 +18,13 @@ from keras.models import Model
 from keras import backend as K
 from keras import optimizers, losses, ops, random
 from keras.callbacks import Callback
-import csv
-from pathlib import Path
 import sys
+import csv
+#Calculate training r squared
+from sklearn.metrics import r2_score
+
+from pathlib import Path
+# This is for absolute imports from the root repository
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
@@ -26,7 +32,6 @@ if str(PROJECT_ROOT) not in sys.path:
 from config.config import (
   ALL_CANCER_FILES
 )
-
 
 # Configure TensorFlow 2.x GPU memory growth (prevents grabbing all memory)
 try:
@@ -41,6 +46,7 @@ except Exception:
     pass
 
 
+# Selecting the samples
 class Sampling(Layer):
     """Reparameterization trick layer that also adds the KL divergence via add_loss."""
     def compute_output_shape(self, input_shape):
@@ -61,9 +67,11 @@ class Sampling(Layer):
     # Note: For metrics, prefer Model.compile(metrics=[...]) or manual trackers in the layer.
         return z
 
+
 def reconstruction_loss(x_input, x_decoded):
-    # Reconstruction loss used for compile (KL is added via Sampling layer)
+    """ Reconstruction loss used for compile (KL is added via Sampling layer)"""
     return ops.multiply(original_dim, losses.mean_squared_error(x_input, x_decoded))
+
 
 class WarmUpCallback(Callback):
     def __init__(self, beta, kappa):
@@ -85,15 +93,18 @@ class WarmUpCallback(Callback):
             new_val = 1.0
         self.beta.assign(new_val)
 
+
 #Read input file
 cancer_type = sys.argv[1]
+pca_components = int(sys.argv[6])
 
 input_folder = ALL_CANCER_FILES + '/' + cancer_type + '/'
 output_folder = ALL_CANCER_FILES + '/' + cancer_type + '/'
 
-input_filename = input_folder + cancer_type + '_DATA_TOP2_JOINED_PCA_1000L.tsv'
+input_filename = input_folder + cancer_type + '_DATA_TOP2_JOINED_PCA_' + str(pca_components) + 'L.tsv'
 output_filename = cancer_type + '_DATA_TOP2_JOINED_encoded_'
 
+print(f'Input file: {input_filename}')
 input_df = pd.read_table(input_filename, index_col=0)
 print("INPUT FILE", input_df.shape)
 print(input_df.head(5))
@@ -104,6 +115,7 @@ intermediate1_dim = int(sys.argv[2])
 intermediate2_dim = int(sys.argv[3])
 latent_dim = int(sys.argv[4])
 fold = int(sys.argv[5])
+
 
 #SET RANDOM SEEDS
 np.random.seed(123456 * fold)
@@ -204,9 +216,6 @@ with open(output_folder + "VAE_" + cancer_type + "_decoder_" + str(latent_dim) +
 decoder.save_weights(output_folder + "VAE_" + cancer_type + "_decoder_" + str(latent_dim) + "L_"+ str(fold) + ".weights.h5")
 print("Saved model to disk")
 
-
-#Calculate training r squared
-from sklearn.metrics import r2_score
 
 training_r2_vals = np.zeros(input_df_training.shape[0])
 for i in range(input_df_training.shape[0]):
