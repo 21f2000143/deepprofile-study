@@ -21,7 +21,7 @@ cancers[PANCREAS]=500
 cancers[THYROID]=500
 cancers[UTERINE]=500
 
-CANCERS=('AML' 'BRAIN' 'COLON' 'KIDNEY' 'LIVER' 'LUNG' 'OV' 'PROSTATE' 'SARCOMA' 'SKIN' 'STOMACH' 'BLADDER' 'CERVICAL' 'HEAD_NECK' 'PANCREAS' 'THYROID' 'UTERINE')
+CANCERS=('AML' 'BRAIN' 'COLON' 'KIDNEY' 'LIVER' 'LUNG' 'OV' 'PROSTATE' 'SARCOMA' 'SKIN' 'STOMACH' 'BLADDER' 'CERVICAL' 'HEAD_NECK' 'PANCREAS' 'THYROID' 'UTERINE' 'BRCA')
 
 for CANCER in "${CANCERS[@]}"; do
     SESSION="$CANCER"
@@ -30,15 +30,7 @@ for CANCER in "${CANCERS[@]}"; do
     echo "▶️ Launching tmux session: $SESSION (size=$SIZE)"
 
     tmux new-session -d -s "$SESSION" \
-    "python Create_PCs_for_DeepLearning_Models.py $CANCER $SIZE; \
-     python Run_VAE_Models.py $CANCER 5 0 100 $SIZE; \
-     python Run_VAE_Models.py $CANCER 10 0 100 $SIZE; \
-     python Run_VAE_Models.py $CANCER 25 0 100 $SIZE; \
-     python Run_VAE_Models.py $CANCER 50 0 100 $SIZE; \
-     python Run_VAE_Models.py $CANCER 50 0 100 $SIZE; \
-     python Run_VAE_Models.py $CANCER 75 0 100 $SIZE; \
-     python Run_VAE_Models.py $CANCER 100 0 100 $SIZE; \
-     python Get_VAE_IG_Attributions.py $CANCER 5 0 100 $SIZE; \
+    "python Get_VAE_IG_Attributions.py $CANCER 5 0 100 $SIZE; \
      python Get_VAE_IG_Attributions.py $CANCER 10 0 100 $SIZE; \
      python Get_VAE_IG_Attributions.py $CANCER 25 0 100 $SIZE; \
      python Get_VAE_IG_Attributions.py $CANCER 50 0 100 $SIZE; \
